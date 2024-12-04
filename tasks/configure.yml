@@ -65,14 +65,34 @@
 
 - when: not cassandra_binary.stat.exists
   block:
-    - name: grab tarball
+    - name: Define URLs
+      set_fact:
+        cassandra_sha256_url: "{{ cassandra_url }}.sha256"
+
+    - name: Download the checksum file
+      get_url:
+        url: '{{ cassandra_sha256_url }}'
+        dest: '/var/tmp/{{ cassandra_file }}.sha256'
+        mode: '0644'
+
+    - name: Extract SHA256 checksum value
+      command: "awk '{print $1}' /var/tmp/{{ cassandra_file }}.sha256"
+      register: cassandra_checksum
+      changed_when: false
+
+    - name: Download the Cassandra binary with checksum verification
       get_url:
         url: '{{ cassandra_url }}'
         dest: '/var/tmp/{{ cassandra_file }}'
-        mode: 0644
+        mode: '0644'
         owner: '{{ cassandra_user }}'
         group: '{{ cassandra_group }}'
-        checksum: '{{ cassandra_sha256 }}'
+        checksum: "sha256:{{ cassandra_checksum.stdout }}"
+
+    - name: Clean up checksum file
+      file:
+        path: '/var/tmp/{{ cassandra_file }}.sha256'
+        state: absent
 
     - name: unpack tarball
       unarchive:
@@ -173,6 +193,10 @@
     owner: '{{ cassandra_user }}'
     group: '{{ cassandra_group }}'
   when: cassandra_install_prometheus_jmx_exporter
+
+- name: Debug cassandra_seed variable
+  debug:
+    var: cassandra_seeds
 
 - name: main configuration (cassandra.yaml)
   template:
